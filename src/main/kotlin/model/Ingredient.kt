@@ -1,3 +1,5 @@
+package model
+
 import cat.montilivi.dades.gestorDeRecursos
 
 data class Ingredient(
