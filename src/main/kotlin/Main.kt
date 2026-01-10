@@ -1,20 +1,31 @@
 package cat.montilivi
 
-import Ingredient
 import cat.montilivi.dades.generadorIIDD
+import model.Ingredient
 import cat.montilivi.dades.gestorDeRecursos
 import cat.montilivi.model.Comanda
 import cat.montilivi.model.MagatzemDeResultats
 import cat.montilivi.model.Plat
+import cat.montilivi.model.TrasaComanda
 import cat.montilivi.model.TrasaIngredient
 import cat.montilivi.model.TrasaPlat
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withPermit
 
 //TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
 // click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
 fun main() {
+
+    var comanda = Comanda(
+        idComanda = generadorIIDD.obtenIdComanda(),
+        plats = emptyList()
+    )
 
     val plat = Plat(
         nom = "Macarrons Gratinats",
@@ -35,12 +46,11 @@ fun main() {
             ),
         ),
         tempsEmplatat = 500L,
-        idComanda = generadorIIDD.obtenIdComanda()
+        idComanda = comanda.idComanda
     )
-    val comanda = Comanda(
-        idComanda = plat.idComanda,
-        plats = listOf(plat)
-    )
+
+    comanda  = comanda.copy(plats = listOf(plat))
+
     val magatzemDeResultats = MagatzemDeResultats()
     runBlocking {
         gestionaComanda(comanda, magatzemDeResultats)
@@ -95,16 +105,18 @@ suspend fun emplata(plat: Plat, ingredientsCuinats: List<TrasaIngredient>): Tras
 suspend fun gestionaComanda(comanda: Comanda, magatzemDeResultats: MagatzemDeResultats) {
     val trasaPlats = mutableListOf<TrasaPlat>()
     val cronometre = System.currentTimeMillis()
+    var tempsPreparacioComanda = 0L
+    val jobs = mutableListOf<Job>()
 
-    comanda.plats.forEach { plat ->
-        val trasaIngredients = mutableListOf<TrasaIngredient>()
-        plat.ingredients.forEach { ingredient ->
-            trasaIngredients.add(cuinaIngredient(ingredient))
+    coroutineScope {
+        comanda.plats.forEach { plat ->
+            val trasaPlat = preparaPlat(plat)
+            magatzemDeResultats.afegeixPlatAcabat(trasaPlat)
+            tempsPreparacioComanda += trasaPlat.tempsTotalDePreparacio
         }
-        val platAcabat = emplata(plat = plat, ingredientsCuinats = trasaIngredients)
-        trasaPlats.add(platAcabat)
-        magatzemDeResultats.afegeixPlatAcabat(plat = platAcabat)
+        magatzemDeResultats.afegeixComandaAcabada(TrasaComanda(comanda.idComanda, tempsPreparacioComanda, trasaPlats))
     }
+    jobs.joinAll()
     val resum = "Id de comanda: ${comanda.idComanda}\nPlats de la comanda: \n" +
             trasaPlats.joinToString (separator = "\n") {
                 "\t- ${it.nomPlat}: ${it.tempsTotalDePreparacio} ms"
@@ -112,4 +124,25 @@ suspend fun gestionaComanda(comanda: Comanda, magatzemDeResultats: MagatzemDeRes
     "Temps emprat: ${System.currentTimeMillis() - cronometre} ms"
 
     println(resum)
+}
+
+private suspend fun preparaPlat(
+    plat: Plat
+): TrasaPlat {
+    val trasaIngredients = mutableListOf<TrasaIngredient>()
+
+    val resultats = mutableListOf<Deferred<TrasaIngredient>>()
+    coroutineScope {
+        plat.ingredients.forEach { ingredient ->
+            resultats.add ( async {
+                cuinaIngredient (ingredient)
+            }
+            )
+        }
+
+        resultats.forEach {trasaIngredients.add(it.await())}
+
+    }
+    val platAcabat = emplata(plat = plat, ingredientsCuinats = trasaIngredients)
+    return platAcabat
 }

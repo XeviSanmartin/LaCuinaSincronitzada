@@ -1,6 +1,6 @@
 package cat.montilivi.model
 
-import Ingredient
+import model.Ingredient
 
 data class Plat(
     val nom: String,
