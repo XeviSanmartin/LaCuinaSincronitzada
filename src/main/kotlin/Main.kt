@@ -5,24 +5,12 @@ import cat.montilivi.dades.generadorIIDD
 import model.Ingredient
 import cat.montilivi.dades.gestorDeRecursos
 import cat.montilivi.model.Comanda
-import cat.montilivi.model.MagatzemDeResultats
 import cat.montilivi.model.Plat
-import cat.montilivi.model.TrasaComanda
-import cat.montilivi.model.TrasaIngredient
-import cat.montilivi.model.TrasaPlat
-import io.github.aakira.napier.LogLevel
+import cat.montilivi.model.Restaurant
 import io.github.aakira.napier.Napier
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.withPermit
 
-//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+
 fun main() {
 
     Napier.base(LoggerCuina())
@@ -56,98 +44,15 @@ fun main() {
 
     comanda  = comanda.copy(plats = listOf(plat))
 
-    val magatzemDeResultats = MagatzemDeResultats()
+    val restaurant = Restaurant()
     runBlocking {
-        gestionaComanda(comanda, magatzemDeResultats)
+        restaurant.repComanda(comanda)
     }
 
 }
-suspend fun cuinaIngredient (ingredient : Ingredient): TrasaIngredient {
-    var cronometre = System.currentTimeMillis()
 
-    Napier.log (priority = LogLevel.VERBOSE,tag = "INGREDIENT",message =  "L'ingredient ${ingredient.nom} demana ${ingredient.recursNecessari}.")
-    gestorDeRecursos.obtenRecurs(ingredient.recursNecessari).withPermit {
-        Napier.log (priority = LogLevel.VERBOSE,tag = "INGREDIENT",message = "L'ingredient ${ingredient.nom} utilitza ${ingredient.recursNecessari}.")
-        Napier.log (priority = LogLevel.VERBOSE,tag = "INGREDIENT",message =  "L'ingredient ${ingredient.nom} demana un cuiner.")
-        gestorDeRecursos.cuiners.withPermit  {
-            Napier.log (priority = LogLevel.VERBOSE,tag = "INGREDIENT",message =  "L'ingredient ${ingredient.nom} té un cuiner assignat.")
-            delay(ingredient.tempsCoccio)
-            Napier.log (priority = LogLevel.VERBOSE,tag = "INGREDIENT",message =  "L'ingredient ${ingredient.nom} s'acabat de cuinar." )
-       }
-        Napier.log (priority = LogLevel.VERBOSE,tag = "INGREDIENT",message =  "L'ingredient ${ingredient.nom} allibera ${ingredient.recursNecessari}.")
-    }
-    cronometre = System.currentTimeMillis() - cronometre
-    Napier.log (priority = LogLevel.VERBOSE,tag = "INGREDIENT",message =  "L'ingredient ${ingredient.nom} ha trigat $cronometre ms a cuinar-se.")
-    return TrasaIngredient(
-        nomIngredient = ingredient.nom,
-        recursUtilitzat = ingredient.recursNecessari,
-        tempsTotal = (cronometre)
-    )
-}
 
-suspend fun emplata(plat: Plat, ingredientsCuinats: List<TrasaIngredient>): TrasaPlat
-{
-    var cronometre = System.currentTimeMillis()
 
-    Napier.log (priority = LogLevel.VERBOSE,tag = "EMPLATA",message =  "El plat ${plat.nom} demana un cuiner per emplatar.")
-    gestorDeRecursos.cuiners.withPermit {
-        Napier.log (priority = LogLevel.VERBOSE,tag = "EMPLATA",message =  "El plat ${plat.nom} té un cuiner assignat per emplatar.")
-        delay(plat.tempsEmplatat)
-    }
-    Napier.log (priority = LogLevel.VERBOSE,tag = "EMPLATA",message =  "El plat ${plat.nom} s'ha emplatat.")
 
-    cronometre = System.currentTimeMillis() - cronometre
-    cronometre += ingredientsCuinats.sumOf { it.tempsTotal }
 
-    return TrasaPlat(
-        nomPlat = plat.nom,
-        tempsTotalDePreparacio = cronometre,
-        detallIngredients = ingredientsCuinats,
-        idComanda = plat.idComanda
-    )
-}
 
-suspend fun gestionaComanda(comanda: Comanda, magatzemDeResultats: MagatzemDeResultats) {
-    val trasaPlats = mutableListOf<TrasaPlat>()
-    val cronometre = System.currentTimeMillis()
-    var tempsPreparacioComanda = 0L
-    val jobs = mutableListOf<Job>()
-
-    coroutineScope {
-        comanda.plats.forEach { plat ->
-            val trasaPlat = preparaPlat(plat)
-            magatzemDeResultats.afegeixPlatAcabat(trasaPlat)
-            tempsPreparacioComanda += trasaPlat.tempsTotalDePreparacio
-        }
-        magatzemDeResultats.afegeixComandaAcabada(TrasaComanda(comanda.idComanda, tempsPreparacioComanda, trasaPlats))
-    }
-    jobs.joinAll()
-    val resum = "Id de comanda: ${comanda.idComanda}\nPlats de la comanda: \n" +
-            trasaPlats.joinToString (separator = "\n") {
-                "\t- ${it.nomPlat}: ${it.tempsTotalDePreparacio} ms"
-            }+
-    "Temps emprat: ${System.currentTimeMillis() - cronometre} ms"
-
-    Napier.log (priority = LogLevel.INFO,tag = "COMANDA",message =  resum)
-}
-
-private suspend fun preparaPlat(
-    plat: Plat
-): TrasaPlat {
-    val trasaIngredients = mutableListOf<TrasaIngredient>()
-
-    val resultats = mutableListOf<Deferred<TrasaIngredient>>()
-    coroutineScope {
-        plat.ingredients.forEach { ingredient ->
-            resultats.add ( async {
-                cuinaIngredient (ingredient)
-            }
-            )
-        }
-
-        resultats.forEach {trasaIngredients.add(it.await())}
-
-    }
-    val platAcabat = emplata(plat = plat, ingredientsCuinats = trasaIngredients)
-    return platAcabat
-}
