@@ -4,5 +4,6 @@ data class TrasaPlat(
     val nomPlat: String,
     val tempsTotalDePreparacio: Long,
     val detallIngredients: List<TrasaIngredient>,
-    val idComanda: Long
+    val idComanda: Long,
+    val cancellat:Boolean = false
 )

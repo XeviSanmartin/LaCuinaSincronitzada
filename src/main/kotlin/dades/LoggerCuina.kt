@@ -13,7 +13,7 @@ class LoggerCuina: Antilog() {
         if (throwable != null) {
             runBlocking {
                 withContext(Dispatchers.IO) {
-                    println("[${priority.name}] - [${tag ?: "NoTag"}]: ${message ?: ""} ${throwable.localizedMessage ?: ""}")
+                    println("[${priority.name}] - [${tag ?: "NoTag"}]: ${message ?: ""} ${throwable.localizedMessage ?: ""} - (Context: $coroutineContext - Fil: ${Thread.currentThread().name})")
                     throwable.printStackTrace()
                 }
             }
@@ -21,7 +21,7 @@ class LoggerCuina: Antilog() {
         else {
             runBlocking {
                 withContext(Dispatchers.IO) {
-                    println("[${priority.name}] - [${tag ?: "NoTag"}]: ${message ?: ""} ${throwable?.localizedMessage ?: ""}")
+                    println("[${priority.name}] - [${tag ?: "NoTag"}]: ${message ?: ""} ${throwable?.localizedMessage ?: ""} - (Context: $coroutineContext -Fil: ${Thread.currentThread().name})")
                 }
             }
         }
